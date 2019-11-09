@@ -5,7 +5,7 @@ import           Text.Megaparsec                ( Parsec
                                                 , anySingle
                                                 , unexpected
                                                 , eof
-                                                , anySingle
+                                                , anySingleBut
                                                 )
 import qualified Text.Megaparsec.Char.Lexer    as L
 import qualified Text.Megaparsec.Char          as C
@@ -18,7 +18,7 @@ import qualified Tokens                        as T
 import           Control.Applicative            ( (<|>) )
 import qualified Control.Applicative.Combinators
                                                as Comb
-import           Data.List.NonEmpty             ( NonEmpty((:|)) )
+import           Data.List.NonEmpty             ( fromList )
 import           Text.Megaparsec.Pos            ( unPos )
 import           Control.Monad                  ( void )
 
@@ -30,11 +30,13 @@ data Line = Line Int [Token] deriving Show
 
 symbol :: Text -> Token -> Lexer Token
 symbol s t = do
-    L.symbol (void $ Comb.many (C.char ' ' <|> C.char '\t')) s
+    L.symbol space s
     return t
 
+space = Comb.choice $ Comb.skipMany <$> [C.char ' ', C.char '\t']
+
 lexeme :: Lexer a -> Lexer a
-lexeme = L.lexeme C.space
+lexeme = L.lexeme space
 
 ifParser = symbol "if" T.If
 
@@ -100,7 +102,7 @@ innerStringParser = do
     return (pack s)
 
 numberParser = do
-    num <- L.signed C.space (lexeme L.decimal)
+    num <- L.signed space (lexeme L.decimal)
     return (T.Number num)
 
 tokenParser = Comb.choice
@@ -118,13 +120,13 @@ tokenParser = Comb.choice
 
 unexpectedParser :: Lexer Token
 unexpectedParser = do
-    c <- anySingle
-    unexpected (E.Tokens (c :| []))
+    c <- anySingleBut '\n'
+    unexpected (E.Tokens (fromList [c]))
 
 
 lineParser :: Lexer Line
 lineParser = do
-    C.space
+    space
     pos    <- L.indentLevel
     tokens <- Comb.many tokenParser
     return (Line (unPos pos) tokens)
