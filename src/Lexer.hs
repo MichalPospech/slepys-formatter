@@ -5,8 +5,8 @@ import           Text.Megaparsec                ( ParsecT
                                                 , anySingle
                                                 , unexpected
                                                 , eof
-                                                , anySingleBut, 
-                                                fancyFailure
+                                                , anySingleBut
+                                                , fancyFailure
                                                 )
 import qualified Text.Megaparsec.Char.Lexer    as L
 import qualified Text.Megaparsec.Char          as C
@@ -22,8 +22,8 @@ import qualified Control.Applicative.Combinators
 import           Data.List.NonEmpty             ( fromList )
 import           Text.Megaparsec.Pos            ( unPos )
 import           Control.Monad                  ( void )
-import qualified Control.Monad.State.Lazy as S
-import Data.Set (singleton)
+import qualified Control.Monad.State.Lazy      as S
+import           Data.Set                       ( singleton )
 
 type Token = T.Token Text Int
 type Lexer = ParsecT Void Text (S.State [Int])
@@ -128,19 +128,38 @@ unexpectedParser = do
 
 
 
-lineParser :: Lexer () -> Lexer Line
+lineParser :: Lexer () -> Lexer [Token]
 lineParser indentParser = do
     Comb.skipMany indentParser
-    pos    <- L.indentLevel
-    indents <- S.get 
+    pos          <- L.indentLevel
+    indentLevels <- S.get
     let indentLevel = unPos pos
-    if notElem indentLevel indents && (head indents > indentLevel) then
-        fancyFailure $ singleton $ E.ErrorFail "Wrong indentation"
-    else do
-        tokens <- Comb.many tokenParser
-        return (Line (unPos pos) tokens)
+    if notElem indentLevel indentLevels && (head indentLevels > indentLevel)
+        then fancyFailure $ singleton $ E.ErrorFail "Wrong indentation"
+        else do
+            tokens <- Comb.many tokenParser
+            let (indents, newIndentLevels) =
+                    getIndents indentLevels indentLevel
+            S.put newIndentLevels
+            return (indents ++ tokens)
+
+  where
+    getIndents inds@(i : _) ind
+        | i == ind
+        = ([], inds)
+        | i < ind
+        = ([T.Indent], ind : inds)
+        | i > ind
+        = ( replicate (length $ takeWhile (ind <) inds) T.Dedent
+          , dropWhile (ind >) inds
+          )
 
 
-programParser :: Lexer [Line]
-programParser =  Comb.sepEndBy (lineParser $ void $ C.char ' ') (void C.eol) <|> Comb.sepEndBy (lineParser (void C.tab )) (void C.eol)
-    
+
+programParser :: Lexer [Token]
+programParser = do
+    tokenLists <-
+        Comb.sepEndBy (lineParser $ void $ C.char ' ') (void C.eol)
+            <|> Comb.sepEndBy (lineParser (void C.tab)) (void C.eol)
+    return (concat tokenLists)
+

@@ -4,3 +4,5 @@ j=read()
 while i<j:
    test(i)
    i=i+1
+  x 
+      abcd
