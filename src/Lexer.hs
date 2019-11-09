@@ -1,11 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Lexer where
-import           Text.Megaparsec                ( Parsec
+import           Text.Megaparsec                ( ParsecT
                                                 , anySingle
                                                 , unexpected
                                                 , eof
-                                                , anySingleBut
+                                                , anySingleBut, 
+                                                fancyFailure
                                                 )
 import qualified Text.Megaparsec.Char.Lexer    as L
 import qualified Text.Megaparsec.Char          as C
@@ -21,9 +22,11 @@ import qualified Control.Applicative.Combinators
 import           Data.List.NonEmpty             ( fromList )
 import           Text.Megaparsec.Pos            ( unPos )
 import           Control.Monad                  ( void )
+import qualified Control.Monad.State.Lazy as S
+import Data.Set (singleton)
 
 type Token = T.Token Text Int
-type Lexer = Parsec Void Text
+type Lexer = ParsecT Void Text (S.State [Int])
 
 
 data Line = Line Int [Token] deriving Show
@@ -33,7 +36,7 @@ symbol s t = do
     L.symbol space s
     return t
 
-space = Comb.choice $ Comb.skipMany <$> [C.char ' ', C.char '\t']
+space = Comb.choice [Comb.skipMany (C.char ' '), Comb.skipMany C.tab]
 
 lexeme :: Lexer a -> Lexer a
 lexeme = L.lexeme space
@@ -124,13 +127,20 @@ unexpectedParser = do
     unexpected (E.Tokens (fromList [c]))
 
 
-lineParser :: Lexer Line
-lineParser = do
-    space
+
+lineParser :: Lexer () -> Lexer Line
+lineParser indentParser = do
+    Comb.skipMany indentParser
     pos    <- L.indentLevel
-    tokens <- Comb.many tokenParser
-    return (Line (unPos pos) tokens)
+    indents <- S.get 
+    let indentLevel = unPos pos
+    if notElem indentLevel indents && (head indents > indentLevel) then
+        fancyFailure $ singleton $ E.ErrorFail "Wrong indentation"
+    else do
+        tokens <- Comb.many tokenParser
+        return (Line (unPos pos) tokens)
 
 
 programParser :: Lexer [Line]
-programParser = Comb.sepEndBy lineParser (void C.eol)
+programParser =  Comb.sepEndBy (lineParser $ void $ C.char ' ') (void C.eol) <|> Comb.sepEndBy (lineParser (void C.tab )) (void C.eol)
+    
