@@ -7,6 +7,7 @@ import           Text.Megaparsec                ( ParsecT
                                                 , eof
                                                 , anySingleBut
                                                 , fancyFailure
+                                                , try
                                                 )
 import qualified Text.Megaparsec.Char.Lexer    as L
 import qualified Text.Megaparsec.Char          as C
@@ -158,8 +159,9 @@ lineParser indentParser = do
 
 programParser :: Lexer [Token]
 programParser = do
-    tokenLists <-
-        Comb.sepEndBy (lineParser $ void $ C.char ' ') (void C.eol)
-            <|> Comb.sepEndBy (lineParser (void C.tab)) (void C.eol)
+    backupIndents <- S.get
+    tokenLists    <-
+        try (Comb.sepEndBy (lineParser $ void $ C.char ' ') (void C.eol))
+            <|> try (Comb.sepEndBy (lineParser (void C.tab)) (void C.eol))
     return (concat tokenLists)
 
