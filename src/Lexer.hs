@@ -26,9 +26,9 @@ import           Control.Monad                  ( void )
 import qualified Control.Monad.State.Lazy      as S
 import           Data.Set                       ( singleton )
 
+
 type Token = T.Token Text Int
 type Lexer = ParsecT Void Text (S.State [Int])
-
 
 data Line = Line Int [Token] deriving Show
 
